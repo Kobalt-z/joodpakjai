@@ -1,0 +1,177 @@
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "Kobalt",
+    SubTitle = "joodpakjai",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Darker",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "house" }),
+    Movement = Window:AddTab({ Title = "Movement", Icon = "arrow-up-right" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
+
+local Options = Fluent.Options
+local modifiedParts = {}  -- Store original properties for restoring
+
+-- Function to create Noclip Tool
+local function createNoclipTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "Noclip Tool"
+    tool.RequiresHandle = false
+    tool.Parent = game.Players.LocalPlayer.Backpack
+
+    tool.Activated:Connect(function()
+        local mouse = game.Players.LocalPlayer:GetMouse()
+        local target = mouse.Target
+
+        if target and target:IsA("BasePart") then
+            if not modifiedParts[target] then
+                modifiedParts[target] = {
+                    Size = target.Size,
+                    Transparency = target.Transparency,
+                    CanCollide = target.CanCollide
+                }
+            end
+            
+            -- Apply noclip effect
+            target.Transparency = 0.5
+            target.CanCollide = false
+        end
+    end)
+end
+
+-- Function to create Delete Tool
+local function createDeleteTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "Delete Tool"
+    tool.RequiresHandle = false
+    tool.Parent = game.Players.LocalPlayer.Backpack
+
+    tool.Activated:Connect(function()
+        local mouse = game.Players.LocalPlayer:GetMouse()
+        local target = mouse.Target
+
+        if target and target:IsA("BasePart") then
+            if not modifiedParts[target] then
+                modifiedParts[target] = {
+                    Size = target.Size,
+                    Transparency = target.Transparency,
+                    CanCollide = target.CanCollide
+                }
+            end
+
+            -- Shrink part to (0,0,0)
+            target.Size = Vector3.new(0, 0, 0)
+        end
+    end)
+end
+
+-- Function to reset all modified parts
+local function resetModifiedParts()
+    for part, originalData in pairs(modifiedParts) do
+        if part then
+            part.Size = originalData.Size
+            part.Transparency = originalData.Transparency
+            part.CanCollide = originalData.CanCollide
+        end
+    end
+    modifiedParts = {}  
+end
+
+-- Speed control using your provided method
+local movementSpeed = 10
+
+local function onSpeedChanged(value)
+    movementSpeed = value
+end
+
+do
+    -- Noclip Tool Button
+    Tabs.Main:AddButton({
+        Title = "Get Noclip Tool",
+        Description = "Click parts to make them noclip",
+        Callback = function()
+            createNoclipTool()
+        end
+    })
+
+    -- Delete Tool Button
+    Tabs.Main:AddButton({
+        Title = "Get Delete Tool",
+        Description = "Click parts to shrink (restorable)",
+        Callback = function()
+            createDeleteTool()
+        end
+    })
+
+    -- Restore Button
+    Tabs.Main:AddButton({
+        Title = "Restore Modified Parts",
+        Description = "Reset all noclip & shrunk parts",
+        Callback = function()
+            resetModifiedParts()
+        end
+    })
+
+    -- Speed Slider in Movement Tab
+    local Slider = Tabs.Movement:AddSlider("SpeedSlider", {
+        Title = "Walking Speed",
+        Description = "Adjust your walking speed",
+        Default = 1,
+        Min = 0,
+        Max = 10,
+        Rounding = 1,
+        Callback = onSpeedChanged
+    })
+    Slider:SetValue(1)
+
+    -- Update speed continuously using the method you provided
+    game:GetService("RunService").Heartbeat:Connect(function()
+        local character = game.Players.LocalPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+            if humanoid then
+                local speaker = game.Players.LocalPlayer
+                local hb = game:GetService("RunService").Heartbeat
+                local tpwalking = true
+                local chr = speaker.Character
+                local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
+
+                -- Apply the translation method
+                while tpwalking and chr and hum and hum.Parent do
+                    local delta = hb:Wait()
+                    if hum.MoveDirection.Magnitude > 0 then
+                        chr:TranslateBy(hum.MoveDirection * movementSpeed * delta * 10)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+InterfaceManager:SetFolder("Kobalt")
+SaveManager:SetFolder("Kobalt/joodpakjai")
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+Window:SelectTab(1)
+
+Fluent:Notify({
+    Title = "Kobalt",
+    Content = "The script has been loaded.",
+    Duration = 8
+})
+
+SaveManager:LoadAutoloadConfig()
