@@ -19,85 +19,134 @@ local Tabs = {
 }
 
 local Options = Fluent.Options
-local modifiedParts = {}  -- Store original properties for restoring
+local movementSpeed = 1  -- Default speed value
+local tpwalking = false
+local deletedParts = {}  -- Table to store deleted parts
+local noclipParts = {}  -- Table to store noclipped parts and their original states
 
--- Function to create Noclip Tool
+-- Speed slider update function
+local function onSpeedChanged(value)
+    movementSpeed = value  -- Set movement speed from slider
+end
+
+-- Noclip Tool
 local function createNoclipTool()
     local tool = Instance.new("Tool")
-    tool.Name = "Noclip Tool"
+    tool.Name = "NoclipTool"
     tool.RequiresHandle = false
     tool.Parent = game.Players.LocalPlayer.Backpack
-
+    
     tool.Activated:Connect(function()
-        local mouse = game.Players.LocalPlayer:GetMouse()
+        local player = game.Players.LocalPlayer
+        local character = player.Character
+        local mouse = player:GetMouse()
         local target = mouse.Target
-
-        if target and target:IsA("BasePart") then
-            if not modifiedParts[target] then
-                modifiedParts[target] = {
-                    Size = target.Size,
-                    Transparency = target.Transparency,
-                    CanCollide = target.CanCollide
+        
+        if target and target.Parent and target.Parent ~= player.Character then
+            -- If the part is not already noclipped, store the original properties and make it noclipped
+            if not noclipParts[target] then
+                noclipParts[target] = {
+                    originalTransparency = target.Transparency,
+                    originalCanCollide = target.CanCollide
                 }
+                -- Make the target part noclipped (transparent and no collision)
+                target.CanCollide = false
+                target.Transparency = 0.5
+            else
+                -- If the part is already noclipped, restore its original properties
+                local original = noclipParts[target]
+                target.CanCollide = original.originalCanCollide
+                target.Transparency = original.originalTransparency
+                -- Remove the part from the noclip list after restoring
+                noclipParts[target] = nil
             end
-            
-            -- Apply noclip effect
-            target.Transparency = 0.5
+        end
+    end)
+
+    return tool
+end
+
+-- Delete Tool
+local function createDeleteTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "DeleteTool"
+    tool.RequiresHandle = false
+    tool.Parent = game.Players.LocalPlayer.Backpack
+    
+    tool.Activated:Connect(function()
+        local player = game.Players.LocalPlayer
+        local mouse = player:GetMouse()
+        local target = mouse.Target
+        if target and target.Parent ~= player.Character then  -- Ignore player character
+            -- Store the original size before resizing
+            table.insert(deletedParts, {part = target, originalSize = target.Size})
+            target.Size = Vector3.zero
             target.CanCollide = false
         end
     end)
+
+    return tool
 end
 
--- Function to create Delete Tool
-local function createDeleteTool()
-    local tool = Instance.new("Tool")
-    tool.Name = "Delete Tool"
-    tool.RequiresHandle = false
-    tool.Parent = game.Players.LocalPlayer.Backpack
-
-    tool.Activated:Connect(function()
-        local mouse = game.Players.LocalPlayer:GetMouse()
-        local target = mouse.Target
-
-        if target and target:IsA("BasePart") then
-            if not modifiedParts[target] then
-                modifiedParts[target] = {
-                    Size = target.Size,
-                    Transparency = target.Transparency,
-                    CanCollide = target.CanCollide
-                }
-            end
-
-            -- Shrink part to (0,0,0)
-            target.Size = Vector3.new(0, 0, 0)
-        end
-    end)
-end
-
--- Function to reset all modified parts
-local function resetModifiedParts()
-    for part, originalData in pairs(modifiedParts) do
-        if part then
-            part.Size = originalData.Size
-            part.Transparency = originalData.Transparency
-            part.CanCollide = originalData.CanCollide
+-- Restore Button for Deleted Parts
+local function restoreDeletedParts()
+    for _, deleted in pairs(deletedParts) do
+        if deleted.part and deleted.part.Parent then
+            deleted.part.Size = deleted.originalSize  -- Restore original size
+            deleted.part.CanCollide = true
         end
     end
-    modifiedParts = {}  
+    deletedParts = {}  -- Clear the deleted parts list
 end
 
--- Speed control using your provided method
-local movementSpeed = 10
-
-local function onSpeedChanged(value)
-    movementSpeed = value
+-- Restore Button for Noclip Parts
+local function restoreNoclipParts()
+    for part, _ in pairs(noclipParts) do
+        if part and part.Parent then
+            local original = noclipParts[part]
+            part.CanCollide = original.originalCanCollide
+            part.Transparency = original.originalTransparency
+            noclipParts[part] = nil
+        end
+    end
 end
 
+-- Movement Speed Control
+game:GetService("RunService").Heartbeat:Connect(function()
+    local speaker = game.Players.LocalPlayer
+    local chr = speaker.Character
+    if chr then
+        local hum = chr:FindFirstChildWhichIsA("Humanoid")
+        if hum then
+            local delta = game:GetService("RunService").Heartbeat:Wait()
+            if hum.MoveDirection.Magnitude > 0 then
+                if movementSpeed then
+                    chr:TranslateBy(hum.MoveDirection * tonumber(movementSpeed) * delta * 10)
+                else
+                    chr:TranslateBy(hum.MoveDirection * delta * 10)
+                end
+            end
+        end
+    end
+end)
+
+-- Tabs Setup
 do
+    -- Movement Speed Slider
+    local Slider = Tabs.Movement:AddSlider("SpeedSlider", {
+        Title = "Walking Speed",
+        Description = "Adjust your walking speed",
+        Default = 0,
+        Min = 0,
+        Max = 10,
+        Rounding = 1,
+        Callback = onSpeedChanged
+    })
+
     -- Noclip Tool Button
     Tabs.Main:AddButton({
-        Title = "Get Noclip Tool",
-        Description = "Click parts to make them noclip",
+        Title = "Noclip Tool",
+        Description = "Activate noclip tool",
         Callback = function()
             createNoclipTool()
         end
@@ -105,58 +154,33 @@ do
 
     -- Delete Tool Button
     Tabs.Main:AddButton({
-        Title = "Get Delete Tool",
-        Description = "Click parts to shrink (restorable)",
+        Title = "Delete Tool",
+        Description = "Activate delete tool",
         Callback = function()
             createDeleteTool()
         end
     })
 
-    -- Restore Button
+    -- Restore Deleted Parts Button
     Tabs.Main:AddButton({
-        Title = "Restore Modified Parts",
-        Description = "Reset all noclip & shrunk parts",
+        Title = "Restore Parts",
+        Description = "Restore deleted parts",
         Callback = function()
-            resetModifiedParts()
+            restoreDeletedParts()
         end
     })
 
-    -- Speed Slider in Movement Tab
-    local Slider = Tabs.Movement:AddSlider("SpeedSlider", {
-        Title = "Walking Speed",
-        Description = "Adjust your walking speed",
-        Default = 1,
-        Min = 0,
-        Max = 10,
-        Rounding = 1,
-        Callback = onSpeedChanged
-    })
-    Slider:SetValue(1)
-
-    -- Update speed continuously using the method you provided
-    game:GetService("RunService").Heartbeat:Connect(function()
-        local character = game.Players.LocalPlayer.Character
-        if character then
-            local humanoid = character:FindFirstChildWhichIsA("Humanoid")
-            if humanoid then
-                local speaker = game.Players.LocalPlayer
-                local hb = game:GetService("RunService").Heartbeat
-                local tpwalking = true
-                local chr = speaker.Character
-                local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-
-                -- Apply the translation method
-                while tpwalking and chr and hum and hum.Parent do
-                    local delta = hb:Wait()
-                    if hum.MoveDirection.Magnitude > 0 then
-                        chr:TranslateBy(hum.MoveDirection * movementSpeed * delta * 10)
-                    end
-                end
-            end
+    -- Restore Noclip Parts Button
+    Tabs.Main:AddButton({
+        Title = "Restore Noclip Parts",
+        Description = "Restore all noclipped parts",
+        Callback = function()
+            restoreNoclipParts()
         end
-    end)
+    })
 end
 
+-- Addons:
 SaveManager:SetLibrary(Fluent)
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
